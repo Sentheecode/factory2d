@@ -13,8 +13,9 @@ const TAKT = 60;
 const PITCH = 58;
 const N = 20;
 const X0 = 36;
-const AZ = 50;
-const EL = 24;
+const AZ = 64;
+const EL = 34;
+const OPEN = 11.35;
 
 const STATIONS = [
   ["上线", "车身落橇，绑定 VIN，拆门"],
@@ -40,20 +41,36 @@ const STATIONS = [
 ];
 
 const LIVE_W = 1040;
-const LIVE_H = 780;
+const LIVE_H = 560;
 const POSTER_W = 1920;
-const POSTER_H = 1080;
+const POSTER_H = 720;
 
 const hall = { x: -30, y: -86, w: X0 + N * PITCH + 200, d: 214, r: 10 };
 
+function bayWindow(sx) {
+  return [
+    [sx - 36, -36, 2],
+    [sx + 168, -32, 6],
+    [sx - 20, 0, 2],
+    [sx + 160, 24, 3],
+    [sx + 10, 52, 6],
+    [sx + 130, 70, 8],
+    [sx + 4, -6, 28],
+    [sx + 54, 30, 28],
+    [sx + 80, 96, 44],
+  ];
+}
+
 function projection(mode) {
-  const poster = mode === "poster";
-  const scale = poster ? 16.4 : 16.2;
-  const focus = poster ? [X0 + 12 * PITCH + 28, 11, 9] : [X0 + 28, 11, 9];
-  const w = poster ? POSTER_W : LIVE_W;
-  const h = poster ? POSTER_H : LIVE_H;
-  const home = k.iso(focus, { origin: [0, 0], scale, azimuth: AZ, elevation: EL });
-  return { origin: [w * 0.5 - home[0], h * 0.44 - home[1]], scale, azimuth: AZ, elevation: EL };
+  if (mode !== "poster") return k.fitProjection(bayWindow(X0), LIVE_W, LIVE_H, { pad: 20, azimuth: AZ, elevation: EL });
+  const pts = [];
+  for (let i = 2; i <= 17; i += 1) {
+    const x = X0 + i * PITCH;
+    pts.push([x + 6, -16, 6], [x + 40, 23, 3], [x + 16, 34, 16], [x + 12, 52, 5], [x + 18, 68, 6]);
+  }
+  const gantry = X0 + 11 * PITCH;
+  pts.push([gantry + 3, -6, 28], [gantry + 52, 30, 28]);
+  return k.fitProjection(pts, POSTER_W, POSTER_H, { pad: 36, azimuth: AZ, elevation: EL });
 }
 
 function scene(P, mode) {
@@ -74,12 +91,12 @@ function scene(P, mode) {
     return L(pts.map(([x, y]) => k.ring(x, y, 0.62, z, P, 10)).join(""), { tone: "lo" }) + D(pts.map(([x, y]) => at([x, y, z])));
   };
   const groove = (box, z, inset = 1.05) => L(k.planOutline(k.insetPlan(box, inset), z, P, 3), { tone: "faint" });
-  const box = (x, y, z, w, d, h, tone = "mid", extra = "") => {
+  const box = (x, y, z, w, d, h, tone = "hi", extra = "") => {
     const face = plan(x, y, w, d, Math.min(1.1, w / 5, d / 5));
     put(x + w / 2, y + d / 2, z + h / 2, S(k.slabOf(face, z, h, P, 4, Math.min(0.55, h * 0.18)), { tone }) + extra);
     return face;
   };
-  const can = (x, y, z, r, h, tone = "mid", steps = 18) => {
+  const can = (x, y, z, r, h, tone = "hi", steps = 18) => {
     put(x, y, z + h / 2, S(k.cylinder(x, y, r, z, h, P, steps, Math.min(0.35, r * 0.15)), { tone, crease: h > r * 3 ? "none" : "faint" }));
   };
   const disc = (x, y, z, axis, radius, length, tone = "hi") => {
@@ -105,7 +122,8 @@ function scene(P, mode) {
   };
 
   // Hall, feet, aisle ruler. The floor is a building slab, then each bay cuts it into a deck.
-  put(hall.x + hall.w / 2, hall.y + hall.d / 2, -4, `<path class="iso-halo" d="${k.haloOf(hall, -9, 6, P)}"/>`);
+  const ground = { x: X0 - 18, y: -8, w: N * PITCH + 48, d: 78, r: 4 };
+  put(ground.x + ground.w / 2, ground.y + ground.d / 2, -4, `<path class="iso-halo" d="${k.haloOf(ground, -4, 3, P)}"/>`);
   for (const [x, y] of k.corners(hall, 28)) {
     can(x, y, -9, 5.2, 1.3, "lo", 20);
     can(x, y, -7.7, 3.8, 7.7, "mid", 20);
@@ -117,12 +135,12 @@ function scene(P, mode) {
     can(x, hall.y + hall.d - 22, -9, 4.2, 1.2, "lo", 16);
     can(x, hall.y + hall.d - 22, -7.8, 3.1, 7.8, "mid", 16);
   }
-  const slab = plan(hall.x, hall.y, hall.w, hall.d, 10);
+  const aisle = plan(ground.x, ground.y, ground.w, ground.d, ground.r);
   put(
-    hall.x + hall.w / 2,
-    hall.y + hall.d / 2,
+    aisle.x + aisle.w / 2,
+    aisle.y + aisle.d / 2,
     -1,
-    S(k.slabOf(slab, -6.2, 6.2, P, 6, 1.2), { tone: "lo" }) + groove(slab, 0, 3.2),
+    S(k.slabOf(aisle, -1.2, 1.2, P, 4, 0.4), { tone: "lo" }) + groove(aisle, 0, 2.4),
   );
   const strip = plan(X0 - 4, -30, N * PITCH + 8, 3.2, 0.4);
   const ticks = k.topTicks(strip.x + 2, strip.x + strip.w - 2, PITCH / 4, 4, strip.y, 0.45, [0.14, 0.22], P);
@@ -176,7 +194,7 @@ function scene(P, mode) {
       z + 3,
       S(k.slabOf(pad, z, 1.1, P, 3, 0.3), { tone: "mid" })
         + screws(pad, z + 1.1, 0.7)
-        + S(k.cylinder(x, y, 0.7, z + 1.1, 4.2, P, 12), { tone: "mid", crease: "none" })
+        + S(k.cylinder(x, y, 0.7, z + 1.1, 4.2, P, 12), { tone: "hi", crease: "none" })
         + S(k.cylinder(x, y, 1.15, z + 5.1, 1.5, P, 14, 0), { tone: "hi" })
         + L(k.knurl(x, y, 1.15, z + 5.1, z + 6.6, 12, P, 0), { tone: "lo" }),
     );
@@ -258,8 +276,9 @@ function scene(P, mode) {
   // Main line, back stations first via the depth sort.
   for (let i = 0; i < N; i += 1) {
     const x = X0 + i * PITCH;
-    const deck = plan(x + 0.7, 0.4, PITCH - 1.4, 23.2, 0.6);
-    put(x + PITCH / 2, 12, 1.1, S(k.slabOf(deck, 0, 2.15, P, 3, 0.35), { tone: "mid" }) + groove(deck, 2.15, 0.9) + screws(deck, 2.15, 1.5));
+    const deck = plan(x + 2.4, 0.4, PITCH - 4.8, 23.2, 0.6);
+    put(x + PITCH / 2, 12, 1.1, S(k.slabOf(deck, 0, 2.15, P, 3, 0.35), { tone: "hi" }) + groove(deck, 2.15, 0.9) + screws(deck, 2.15, 1.5));
+    put(x + 16, 2.6, 2.6, k.faceTextSvg(k.topMatrix([x + 12, 3.4], 2.5, P), String(i + 1).padStart(2, "0"), { size: 3.6, tone: "hi", anchor: "middle" }));
     put(x + 18, 11, 8, `<g data-slot="${i}"></g>`);
     can(x + 4.2, -8.4, 0, 0.42, 7.2, "mid", 10);
     can(x + 4.2, -8.4, 7.2, 0.62, 0.7, "lo", 10);
@@ -370,19 +389,18 @@ function scene(P, mode) {
     }
     if (i === 11) {
       for (const [dx, dy] of [[3, 30], [52, 30], [3, -6], [52, -6]]) {
-        const foot = plan(x + dx - 2.4, dy - 2.4, 4.8, 4.8, 0.45);
-        put(x + dx, dy, 0.7, S(k.slabOf(foot, 0, 1.15, P, 3, 0.22), { tone: "lo" }) + screws(foot, 1.15, 0.7));
-        can(x + dx, dy, 1.15, 1.2, 1.15, "mid", 14);
-        can(x + dx, dy, 2.3, 0.7, 22.6, "mid", 14);
-        can(x + dx, dy, 24.9, 1.4, 1.15, "hi", 14);
+        const foot = plan(x + dx - 3.1, dy - 3.1, 6.2, 6.2, 0.5);
+        put(x + dx, dy, 0.8, S(k.slabOf(foot, 0, 1.35, P, 3, 0.24), { tone: "mid" }) + screws(foot, 1.35, 0.8));
+        can(x + dx, dy, 1.35, 2.15, 23.6, "hi", 16);
+        can(x + dx, dy, 24.95, 2.7, 1.7, "hi", 16);
       }
-      put(x + 27, 30, 25.6, S(k.slabOf(plan(x + 2, 29.2, 51, 1.7, 0.3), 24.9, 1.35, P, 2), { tone: "mid" }));
-      put(x + 27, -6, 25.6, S(k.slabOf(plan(x + 2, -6.8, 51, 1.7, 0.3), 24.9, 1.35, P, 2), { tone: "mid" }));
-      put(x + 27, 12, 25.8, S(k.slabOf(plan(x + 25.6, -6, 2.6, 36, 0.3), 25.1, 1.2, P, 2), { tone: "mid" }));
-      const trolley = plan(x + 16, 9.6, 18, 4.6, 0.4);
-      put(x + 25, 12, 24.6, S(k.slabOf(trolley, 23.6, 1.45, P, 3, 0.28), { tone: "hi" }) + screws(trolley, 25.05, 0.7));
+      put(x + 27, 30, 26.2, `<g data-tool="gantry">` + S(k.slabOf(plan(x + 0.6, 28.2, 54.8, 3.6, 0.45), 24.8, 2.9, P, 2, 0.35), { tone: "hi" }) + `</g>`);
+      put(x + 27, -6, 26.2, S(k.slabOf(plan(x + 0.6, -7.8, 54.8, 3.6, 0.45), 24.8, 2.9, P, 2, 0.35), { tone: "hi" }));
+      put(x + 27, 12, 26.4, S(k.slabOf(plan(x + 24.4, -6.4, 4.4, 38.4, 0.4), 25.2, 2.3, P, 2, 0.3), { tone: "hi" }));
+      const trolley = plan(x + 14, 8.6, 22, 6.4, 0.45);
+      put(x + 25, 12, 24.2, S(k.slabOf(trolley, 21.8, 2.2, P, 3, 0.32), { tone: "hi" }) + screws(trolley, 24, 0.8));
       for (const dx of [18, 32]) {
-        for (const dy of [10.4, 13.2]) can(x + dx, dy, 15.2, 0.16, 8.5, "hi", 8);
+        for (const dy of [10.2, 13.6]) can(x + dx, dy, 14.2, 0.32, 7.6, "hi", 8);
       }
       const stand = plan(x + 40, -16, 8, 5, 0.4);
       put(x + 44, -13.5, 2, S(k.slabOf(stand, 0, 3.2, P, 3, 0.3), { tone: "mid" }) + screws(stand, 3.2, 0.7));
@@ -551,7 +569,6 @@ function scene(P, mode) {
     const nS = rings.length;
     const n = rings[0].length;
     const buckets = [[], [], [], [], []];
-    const fills = [];
     const vis = Array.from({ length: nS - 1 }, () => Array(n).fill(false));
     const normals = Array.from({ length: nS - 1 }, () => Array(n));
     const atV = (i, j) => rings[i][((j % n) + n) % n];
@@ -567,9 +584,7 @@ function scene(P, mode) {
         const visible = G.len3(G.cross3(G.sub3(b, a), G.sub3(d, a))) > 1e-4 && G.dot3(normal, V) > 0.012;
         vis[i][j] = visible;
         if (!visible) continue;
-        const quad = k.pathOf([a, b, c, d].map((p) => k.iso(p, P)), true);
-        fills.push(quad);
-        buckets[Math.min(4, G.bandOf(G.dot3(normal, Lt)))].push(quad);
+        buckets[Math.min(4, G.bandOf(G.dot3(normal, Lt)))].push(k.pathOf([a, b, c, d].map((p) => k.iso(p, P)), true));
       }
     }
     const capVis = [false, false];
@@ -590,9 +605,7 @@ function scene(P, mode) {
       capVis[which] = visible;
       if (!visible) return;
       const ordered = normal[0] * want < 0 ? ring : [...ring].reverse();
-      const capPath = k.pathOf(ordered.map((p) => k.iso(p, P)), true);
-      fills.push(capPath);
-      buckets[Math.min(4, G.bandOf(G.dot3(normal, Lt)))].push(capPath);
+      buckets[Math.min(4, G.bandOf(G.dot3(normal, Lt)))].push(k.pathOf(ordered.map((p) => k.iso(p, P)), true));
     });
     const outlineParts = [];
     const stroke = (p, q) => {
@@ -637,7 +650,7 @@ function scene(P, mode) {
     }
     for (const shut of shuts) seg(shut[0], shut[1]);
     return {
-      fill: fills.filter(Boolean).join(""),
+      fill: "M0 0",
       outline,
       crease,
       top: buckets[4].join(""),
@@ -667,8 +680,8 @@ function scene(P, mode) {
       ), { tone: "hi", crease: "none" });
       bolts.push(at([x + Math.cos(a) * 0.72, y + outward * 1.08, cz + Math.sin(a) * 0.72]));
     }
-    return S(G.lathe(tire, F, P, { steps: 36, smooth: { rows: 4 } }), { tone: "hi", crease: "none" })
-      + S(G.lathe([[0.55, 1.72], [0.95, 2.02], [1.12, 1.35], [1.08, 0.42]], face, P, { steps: 28 }), { tone: "hi", crease: "none" })
+    return S(G.lathe(tire, F, P, { steps: 18, smooth: { rows: 3 } }), { tone: "hi", crease: "none" })
+      + S(G.lathe([[0.55, 1.72], [0.95, 2.02], [1.12, 1.35], [1.08, 0.42]], face, P, { steps: 14 }), { tone: "hi", crease: "none" })
       + spokes
       + S(G.lathe([[0.96, 0.16], [1.14, 0.34], [1.2, 0.12]], face, P, { steps: 14 }), { tone: "mid", crease: "none" })
       + D(bolts, { size: Math.max(1.15, P.scale * 0.055), tone: "hi" });
@@ -735,17 +748,7 @@ function scene(P, mode) {
     if (flipped) rings = rings.map((ring) => [...ring].reverse());
     const count = rings[0].length;
     const ix = (index) => (flipped ? count - 1 - index : index);
-    const stations = [];
-    const dense = [];
-    for (let i = 0; i < rings.length - 1; i += 1) {
-      dense.push(rings[i]);
-      stations.push(raw[i]);
-      dense.push(rings[i].map((point, n) => point.map((value, k) => (value + rings[i + 1][n][k]) * 0.5)));
-      stations.push(raw[i].map((value, k) => (k === 10 ? 0 : (value + raw[i + 1][k]) * 0.5)));
-    }
-    dense.push(rings[rings.length - 1]);
-    stations.push(raw[raw.length - 1]);
-    rings = dense;
+    const stations = raw;
     const seamAt = stations.map((row, index) => (row[10] ? index : -1)).filter((index) => index > 0);
     const shuts = [];
     const sideFaces = (y) => (y < cy ? G.dot3([0, -1, 0], G.viewOf(P)) > 0.05 : G.dot3([0, 1, 0], G.viewOf(P)) > 0.05);
@@ -846,8 +849,8 @@ function scene(P, mode) {
   };
 
   if (mode === "live") {
-    const initial = (from) => (from === "drop" || from < 0 ? (from === "drop" ? 0 : 1) : 0);
-    const car = `<g data-part="car" transform="${k.translateAlong(P, [X0 + 5, 0, 0])}">${carInner(initial, true)}</g>`;
+    const initial = amountOf(Math.floor(OPEN), OPEN - Math.floor(OPEN));
+    const car = `<g data-part="car" transform="${k.translateAlong(P, [X0 + OPEN * PITCH + 5, 0, 0])}">${carInner(initial, true)}</g>`;
     put(X0 + 18, 11, 8, car);
   } else {
     const station = 12;
@@ -856,30 +859,26 @@ function scene(P, mode) {
     put(X0 + station * PITCH + 18, 11, 10, car);
   }
 
-  // Painted-body store: three shells on skids, parallel to the first bays.
+  // One shell and one finished car, reused for the body store, shipping, and the repair spur.
+  const bare = (from) => (from < 0 ? 1 : 0);
+  const parked = (from) => (from === "drop" ? 0 : 1);
+  put(-40, -80, 0, `<defs><g id="body-shell">${carInner(bare, false, false)}</g><g id="body-done">${carInner(parked, false, false)}</g></defs>`);
   for (let n = 0; n < 3; n += 1) {
     const x = X0 + 6 + n * 52;
     const y = 84;
-    const bare = (from) => (from < 0 ? 1 : 0);
     box(x + 1, y + 6.5, 0, 42, 11, 2.4, "lo");
-    put(x + 20, y + 12, 6, `<g transform="${k.translateAlong(P, [x, y, -2.4])}">${carInner(bare, false, false)}</g>`);
+    put(x + 20, y + 12, 6, `<use href="#body-shell" transform="${k.translateAlong(P, [x, y, -2.4])}"/>`);
   }
-
-  // Two finished cars in shipping, and one in the repair spur with the hood stood up.
   for (let n = 0; n < 2; n += 1) {
     const x = X0 + N * PITCH + 8 + n * 48;
-    const parked = (from) => (from === "drop" ? 0 : 1);
     box(x + 1, 5, 0, 44, 14, 1.5, "lo");
-    const done = carInner(parked, false, false);
-    put(x + 16, 8, 8, `<g transform="${k.translateAlong(P, [x, 0, 0])}">${done}</g>`);
+    put(x + 16, 8, 8, `<use href="#body-done" transform="${k.translateAlong(P, [x, 0, 0])}"/>`);
   }
   {
     const x = X0 + 19 * PITCH + 6;
     const y = -52;
     box(x, y + 4, 0, 44, 16, 1.4, "lo");
-    const parked = (from) => (from === "drop" ? 0 : 1);
-    const done = carInner(parked, false, false);
-    put(x + 16, y + 4, 6, `<g transform="${k.translateAlong(P, [x, y, 0])}">${done}${S(k.slabOf(plan(4, 7.2, 8, 0.45, 0.12), 8.6, 5.2, P, 2), { tone: "hi" })}</g>`);
+    put(x + 16, y + 4, 6, `<g transform="${k.translateAlong(P, [x, y, 0])}"><use href="#body-done"/>${S(k.slabOf(plan(4, 7.2, 8, 0.45, 0.12), 8.6, 5.2, P, 2), { tone: "hi" })}</g>`);
   }
 
   items.sort((a, b) => b.d - a.d);
@@ -891,8 +890,10 @@ function pageFor(mode) {
   const { body, solids } = scene(P, mode);
   const width = mode === "poster" ? POSTER_W : LIVE_W;
   const height = mode === "poster" ? POSTER_H : LIVE_H;
+  const home = k.iso([X0, 0, 0], P);
+  const atStation = k.iso([X0 + OPEN * PITCH, 0, 0], P);
   const clipped = mode === "live"
-    ? `<defs><clipPath id="shop"><rect width="${width}" height="${height}"/></clipPath></defs><g clip-path="url(#shop)"><g data-world>${body}</g></g>`
+    ? `<defs><clipPath id="shop"><rect width="${width}" height="${height}"/></clipPath></defs><g clip-path="url(#shop)"><g data-world transform="translate(${(home[0] - atStation[0]).toFixed(2)} ${(home[1] - atStation[1]).toFixed(2)})">${body}</g></g>`
     : body;
   const svg = k.figureSvg({
     width,
@@ -927,12 +928,12 @@ const seats = svg.querySelector('[data-tool="seats"]');
 const fill = svg.querySelector('[data-tool="fill"]');
 const andons = [...svg.querySelectorAll("[data-andon]")];
 const still = matchMedia("(prefers-reduced-motion: reduce)");
-const home = iso([X0 + 28, 11, 9], P);
-let shown = 12.7;
-let target = 12.7;
+const home = iso([X0, 0, 0], P);
+let shown = ${OPEN};
+let target = ${OPEN};
 let frame = 0;
 let last = 0;
-let clock = 12.7 * 2.7;
+let clock = ${OPEN} * 2.7;
 let touring = !still.matches;
 let visible = false;
 let idle = 0;
@@ -974,7 +975,7 @@ function render() {
   if (readout.textContent !== text) readout.textContent = text;
   stage.setAttribute("aria-valuenow", String(station + 1));
   stage.setAttribute("aria-valuetext", info.name + "，" + info.work);
-  const focus = iso([X0 + shown * PITCH + 28, 11, 9], P);
+  const focus = iso([X0 + shown * PITCH, 0, 0], P);
   world.setAttribute("transform", "translate(" + (home[0] - focus[0]).toFixed(2) + " " + (home[1] - focus[1]).toFixed(2) + ")");
   andons.forEach((node, index) => node.setAttribute("data-hot", index === station ? "" : "off"));
 }
@@ -1034,17 +1035,18 @@ const plate = k.plateHtml({
   fig: "Fig 1",
   title: "总装车间",
   hint: "手指左右拖，沿节拍走完全线",
-  readout: "上线 · 节拍 60 s · 站内 0 s",
+  readout: "落车合装 · 节拍 60 s · 站内 21 s",
   keys: [
     { mark: "lit", label: "正在装配的这台车：车顶是要跟着走的那一件" },
     { mark: "raised", label: "车身、座椅、玻璃、动力和线边零件" },
   ],
   caption: "涂装后的车身按 60 秒节拍走过 20 个工位：上线拆门、线束、隔音地毯、顶棚、玻璃、仪表空调、座舱饰件、座椅、车门回装、底盘预装、动力合装、落车、车轮保险杠、油液、电检、定位大灯、转毂、淋雨、驾驶辅助标定、商品化放行。门线、仪表台、内燃机与电池、悬架、前端在主线外侧分装。读数是当前工位和这个节拍里已经过去的秒数。合装那一站，车身落下与副车架对孔。",
-  body: `<div class="iso-stage" tabindex="0" role="slider" aria-label="总装主线，方向键逐站前进" aria-valuemin="1" aria-valuemax="20" aria-valuenow="1">${livePage.svg}</div>`,
+  body: `<div class="iso-stage" tabindex="0" role="slider" aria-label="总装主线，方向键逐站前进" aria-valuemin="1" aria-valuemax="20" aria-valuenow="12">${livePage.svg}</div>`,
 });
 
 const htmlName = theme === "light" ? "final-assembly-light.html" : "final-assembly.html";
 const svgName = theme === "light" ? "final-assembly-light.svg" : "final-assembly.svg";
-writeFileSync(join(HERE, htmlName), k.pageHtml({ title: "总装车间", theme, body: plate, script: kitScript() + live, width: 1080 }));
+const page = k.pageHtml({ title: "总装车间", theme, body: plate, script: kitScript() + live, width: 1080 }).replace("<script type=\"module\">", "<script>");
+writeFileSync(join(HERE, htmlName), page);
 writeFileSync(join(HERE, svgName), posterPage.svg);
 console.log("wrote", htmlName, svgName, "live solids", livePage.solids, "poster solids", posterPage.solids);
