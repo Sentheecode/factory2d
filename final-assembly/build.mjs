@@ -13,8 +13,8 @@ const TAKT = 60;
 const PITCH = 58;
 const N = 20;
 const X0 = 36;
-const AZ = 38;
-const EL = 33;
+const AZ = 50;
+const EL = 24;
 
 const STATIONS = [
   ["上线", "车身落橇，绑定 VIN，拆门"],
@@ -48,8 +48,8 @@ const hall = { x: -30, y: -86, w: X0 + N * PITCH + 200, d: 214, r: 10 };
 
 function projection(mode) {
   const poster = mode === "poster";
-  const scale = poster ? 15.6 : 15.0;
-  const focus = poster ? [X0 + 12 * PITCH + 24, 18, 8] : [X0 + 24, 18, 8];
+  const scale = poster ? 16.4 : 16.2;
+  const focus = poster ? [X0 + 12 * PITCH + 28, 11, 9] : [X0 + 28, 11, 9];
   const w = poster ? POSTER_W : LIVE_W;
   const h = poster ? POSTER_H : LIVE_H;
   const home = k.iso(focus, { origin: [0, 0], scale, azimuth: AZ, elevation: EL });
@@ -545,31 +545,133 @@ function scene(P, mode) {
   function extrusion(polygon, s0, s1, tone, lit = false, crease = "faint") {
     return S(G.prismOf(G.frameAlong(bodyAt, along), polygon, s0, s1, P), { tone, lit, crease });
   }
+  function meshSolid(rings, { sharp = 0.78, longCrease = [], seams = [], shuts = [] } = {}) {
+    const V = G.viewOf(P);
+    const Lt = G.lightOf(P);
+    const nS = rings.length;
+    const n = rings[0].length;
+    const buckets = [[], [], [], [], []];
+    const fills = [];
+    const vis = Array.from({ length: nS - 1 }, () => Array(n).fill(false));
+    const normals = Array.from({ length: nS - 1 }, () => Array(n));
+    const atV = (i, j) => rings[i][((j % n) + n) % n];
+    const faceVis = (i, j) => (i < 0 || i >= nS - 1 ? false : vis[i][((j % n) + n) % n]);
+    for (let i = 0; i < nS - 1; i += 1) {
+      for (let j = 0; j < n; j += 1) {
+        const a = atV(i, j);
+        const b = atV(i, j + 1);
+        const d = atV(i + 1, j);
+        const c = atV(i + 1, j + 1);
+        const normal = G.unit3(G.cross3(G.sub3(b, a), G.sub3(d, a)));
+        normals[i][j] = normal;
+        const visible = G.len3(G.cross3(G.sub3(b, a), G.sub3(d, a))) > 1e-4 && G.dot3(normal, V) > 0.012;
+        vis[i][j] = visible;
+        if (!visible) continue;
+        const quad = k.pathOf([a, b, c, d].map((p) => k.iso(p, P)), true);
+        fills.push(quad);
+        buckets[Math.min(4, G.bandOf(G.dot3(normal, Lt)))].push(quad);
+      }
+    }
+    const capVis = [false, false];
+    [0, nS - 1].forEach((index, which) => {
+      const ring = rings[index];
+      let normal = [0, 0, 0];
+      for (let j = 0; j < n; j += 1) {
+        const a = ring[j];
+        const b = ring[(j + 1) % n];
+        normal[0] += (a[1] - b[1]) * (a[2] + b[2]);
+        normal[1] += (a[2] - b[2]) * (a[0] + b[0]);
+        normal[2] += (a[0] - b[0]) * (a[1] + b[1]);
+      }
+      normal = G.unit3(normal);
+      const want = which === 0 ? -1 : 1;
+      if (normal[0] * want < 0) normal = G.mul3(normal, -1);
+      const visible = G.dot3(normal, V) > 0.012;
+      capVis[which] = visible;
+      if (!visible) return;
+      const ordered = normal[0] * want < 0 ? ring : [...ring].reverse();
+      const capPath = k.pathOf(ordered.map((p) => k.iso(p, P)), true);
+      fills.push(capPath);
+      buckets[Math.min(4, G.bandOf(G.dot3(normal, Lt)))].push(capPath);
+    });
+    const outlineParts = [];
+    const stroke = (p, q) => {
+      const d = k.pathOf([k.iso(p, P), k.iso(q, P)]);
+      if (d) outlineParts.push(d);
+    };
+    for (let i = 0; i < nS - 1; i += 1) {
+      for (let j = 0; j < n; j += 1) {
+        if (faceVis(i, j) !== faceVis(i, j - 1)) stroke(atV(i, j), atV(i + 1, j));
+      }
+    }
+    for (let i = 0; i < nS; i += 1) {
+      for (let j = 0; j < n; j += 1) {
+        const left = i === 0 ? capVis[0] : faceVis(i - 1, j);
+        const right = i === nS - 1 ? capVis[1] : faceVis(i, j);
+        const p = atV(i, j);
+        const q = atV(i, j + 1);
+        if (left !== right && (i === 0 || i === nS - 1 || p[2] < 9.2 || q[2] < 9.2)) stroke(p, q);
+      }
+    }
+    const outline = outlineParts.join("");
+    let crease = "";
+    const seg = (p, q) => {
+      const d = k.pathOf([k.iso(p, P), k.iso(q, P)]);
+      if (d) crease += d;
+    };
+    for (let i = 0; i < nS - 1; i += 1) {
+      for (let j = 0; j < n; j += 1) {
+        if (!faceVis(i, j) || !faceVis(i, j - 1)) continue;
+        const turn = G.dot3(normals[i][j], normals[i][((j - 1) % n + n) % n]);
+        const forced = longCrease.includes(((j % n) + n) % n);
+        if (forced || turn < Math.cos(sharp)) seg(atV(i, j), atV(i + 1, j));
+      }
+    }
+    for (const index of seams) {
+      if (index <= 0 || index >= nS - 1) continue;
+      for (let j = 0; j < n; j += 1) {
+        const p = atV(index, j);
+        const q = atV(index, j + 1);
+        if (faceVis(index - 1, j) && faceVis(index, j) && (p[2] + q[2]) * 0.5 > 8.2 && Math.min(p[2], q[2]) < 13.2) seg(p, q);
+      }
+    }
+    for (const shut of shuts) seg(shut[0], shut[1]);
+    return {
+      fill: fills.filter(Boolean).join(""),
+      outline,
+      crease,
+      top: buckets[4].join(""),
+      shades: buckets.slice(0, 4).map((list) => list.join("")),
+      seamless: true,
+    };
+  }
+
   function roadWheel(x, y) {
     const outward = y < 12 ? -1 : 1;
-    const F = G.frameAlong([x, y, 5.35], [0, 1, 0]);
-    const tire = [[-1.12, 1.45], [-0.82, 2.25, 1], [-0.32, 3.05, 1], [0.32, 3.05, 1], [0.82, 2.25, 1], [1.12, 1.45]];
-    const faceY = y + outward * 1.02;
-    const bolts = [];
+    const cz = 5.35;
+    const axis = [0, outward, 0];
+    const F = G.frameAlong([x, y, cz], axis);
+    const tire = [[-0.15, 1.7], [-0.05, 2.35, 1], [0.35, 3.02, 1], [0.85, 3.05, 1], [1.15, 2.25, 1], [1.22, 1.55]];
+    const face = G.frameAlong([x, y, cz], axis);
     let spokes = "";
+    const bolts = [];
     for (let n = 0; n < 5; n += 1) {
-      const a = (n / 5) * Math.PI * 2 - 0.4;
-      bolts.push(at([x + Math.cos(a) * 1.2, faceY, 5.35 + Math.sin(a) * 1.2]));
-      const axis = [Math.cos(a), 0, Math.sin(a)];
+      const a = (n / 5) * Math.PI * 2 - 0.35;
+      const radial = [Math.cos(a), 0, Math.sin(a)];
       spokes += S(G.prismOf(
-        G.frameAlong([x + Math.cos(a) * 0.55, faceY, 5.35 + Math.sin(a) * 0.55], axis),
-        [[-0.22, -0.1], [0.22, -0.1], [0.22, 0.1], [-0.22, 0.1]],
-        0.15,
-        1.85,
+        G.frameAlong([x + Math.cos(a) * 0.42, y + outward * 1.02, cz + Math.sin(a) * 0.42], radial),
+        [[-0.07, -0.05], [0.07, -0.05], [0.07, 0.05], [-0.07, 0.05]],
+        0.05,
+        1.15,
         P,
       ), { tone: "hi", crease: "none" });
+      bolts.push(at([x + Math.cos(a) * 0.72, y + outward * 1.08, cz + Math.sin(a) * 0.72]));
     }
-    const cap = G.frameAlong([x, faceY, 5.35], [0, outward, 0]);
-    return S(G.lathe(tire, F, P, { steps: 28, smooth: { rows: 3 } }), { tone: "hi", crease: "none" })
-      + S(G.lathe([[0.72, 1.85], [0.95, 2.15], [1.08, 1.85]], F, P, { steps: 22 }), { tone: "hi" })
-      + S(G.lathe([[0, 0.2], [0.28, 0.62], [0.42, 0.16]], cap, P, { steps: 12 }), { tone: "mid" })
+    return S(G.lathe(tire, F, P, { steps: 36, smooth: { rows: 4 } }), { tone: "hi", crease: "none" })
+      + S(G.lathe([[0.55, 1.72], [0.95, 2.02], [1.12, 1.35], [1.08, 0.42]], face, P, { steps: 28 }), { tone: "hi", crease: "none" })
       + spokes
-      + D(bolts, { size: Math.max(1.2, P.scale * 0.065), tone: "hi" });
+      + S(G.lathe([[0.96, 0.16], [1.14, 0.34], [1.2, 0.12]], face, P, { steps: 14 }), { tone: "mid", crease: "none" })
+      + D(bolts, { size: Math.max(1.15, P.scale * 0.055), tone: "hi" });
   }
 
   function carInner(amount, reactive, accent = true) {
@@ -579,66 +681,143 @@ function scene(P, mode) {
       const style = reactive ? ` style="opacity:${value < 0.5 ? 0 : 1}"` : "";
       return `<g data-piece="${name}" data-from="${from}"${style}>${svg}</g>`;
     };
-    const panel = (poly, s0, s1) => extrusion(poly, s0, s1, "hi", false, "none");
-    const nose = [[-6.0, 1.9], [-6.35, 3.15], [-5.7, 4.55], [-2.1, 5.25], [2.1, 5.25], [5.7, 4.55], [6.35, 3.15], [6.0, 1.9]];
-    const hood = [[-5.45, 2.05], [-6.55, 3.55], [-6.15, 5.35], [-1.45, 6.65], [1.45, 6.65], [6.15, 5.35], [6.55, 3.55], [5.45, 2.05]];
-    const cowl = [[-5.5, 2.15], [-6.25, 3.7], [-5.95, 6.45], [-2.35, 8.35], [2.35, 8.35], [5.95, 6.45], [6.25, 3.7], [5.5, 2.15]];
-    const cabin = [[-5.4, 2.2], [-6.05, 3.95], [-5.85, 6.85], [-2.75, 10.35], [2.75, 10.35], [5.85, 6.85], [6.05, 3.95], [5.4, 2.2]];
-    const deck = [[-5.5, 2.15], [-6.25, 3.75], [-5.95, 6.05], [-2.2, 7.15], [2.2, 7.15], [5.95, 6.05], [6.25, 3.75], [5.5, 2.15]];
-    const tail = [[-5.7, 1.95], [-6.15, 3.3], [-5.85, 5.15], [-2.55, 5.95], [2.55, 5.95], [5.85, 5.15], [6.15, 3.3], [5.7, 1.95]];
-    const shut = (side, s0) => panel([
-      [side * 5.72, 2.55], [side * 5.9, 2.6], [side * 5.84, 6.65], [side * 5.66, 6.6],
-    ], s0, s0 + 0.1);
-    const brow = (side, x0, x1) => panel([
-      [side * 6.35, 5.45], [side * 7.05, 5.6], [side * 6.95, 6.25], [side * 6.25, 6.1],
-    ], x0, x1);
-    let shell = panel(nose, 0.25, 5.1) + panel(hood, 4.7, 15.0) + panel(cowl, 14.5, 18.6) + panel(cabin, 18.1, 31.2) + panel(deck, 30.6, 37.4) + panel(tail, 36.8, 43.5);
-    shell += [-1, 1].map((side) => brow(side, 7.4, 11.4) + brow(side, 31.4, 35.6)).join("");
-    shell += panel([[-0.1, 6.42], [0.1, 6.42], [0.07, 6.68], [-0.07, 6.68]], 5.6, 14.2);
-    shell += [-1, 1].map((side) => shut(side, 18.45) + shut(side, 24.6) + shut(side, 30.7)).join("");
-    shell += S(k.slabOf(plan(33.4, 4.85, 1.15, 0.18, 0.04), 6.55, 0.85, P, 2), { tone: "hi", crease: "none" });
-    const roofZ = bodyAt[2] + 10.35;
-    shell += L(k.planOutline(plan(21.6, 10.15, 5.6, 3.5, 0.18), roofZ + 0.04, P, 3), { tone: "hi" });
-    shell += S(k.cylinder(28.2, 12.35, 0.09, roofZ, 1.15, P, 8), { tone: "hi", crease: "none" });
-    shell += S(k.cylinder(28.2, 12.35, 0.18, roofZ + 1.15, 0.14, P, 8), { tone: "mid", crease: "none" });
-    const glassSheet = (origin, axis, poly, s0, s1) => S(G.prismOf(G.frameAlong(origin, axis), poly, s0, s1, P), { tone: "hi", lit: accent, crease: "none" });
-    const sidePane = (side, s0, s1) => extrusion([
-      [side * 5.15, 7.25], [side * 4.98, 7.25], [side * 2.35, 9.75], [side * 2.5, 9.75],
-    ], s0, s1, "hi", accent, "none");
-    const glass = glassSheet([15.6, 12, bodyAt[2] + 7.05], [1, 0, 0.72], [[-1.9, -0.05], [1.9, -0.05], [1.55, 0.05], [-1.55, 0.05]], 0, 4.1)
-      + [-1, 1].map((side) => sidePane(side, 19.5, 24.15) + sidePane(side, 25.05, 30.0)).join("")
-      + glassSheet([32.0, 12, roofZ - 0.55], [1, 0, -0.42], [[-1.6, -0.05], [1.6, -0.05], [1.3, 0.05], [-1.3, 0.05]], 0, 2.8);
-    let grille = S(k.slabOf(plan(-0.05, 9.7, 0.55, 4.6, 0.1), 4.95, 1.7, P, 2), { tone: "mid", crease: "none" });
-    for (let i = 0; i < 9; i += 1) {
-      grille += S(k.slabOf(plan(0.32, 9.85 + i * 0.48, 0.38, 0.16, 0.03), 5.15, 1.35, P, 2), { tone: "hi", crease: "none" });
-    }
-    grille += S(k.slabOf(plan(0.2, 9.85, 0.28, 4.3, 0.05), 4.72, 0.28, P, 2), { tone: "hi", crease: "none" });
-    grille += S(k.slabOf(plan(0.2, 9.85, 0.28, 4.3, 0.05), 6.45, 0.22, P, 2), { tone: "hi", crease: "none" });
-    const lampAt = (x, y, z, len, r) => S(G.lathe([[0, r * 0.7], [len * 0.62, r], [len, r * 0.28]], G.frameAlong([x, y, z], along), P, { steps: 16 }), { tone: "hi", crease: "none" });
-    const lamps = [6.05, 17.95].map((y) => lampAt(0.55, y, 6.45, 1.85, 0.72) + lampAt(0.7, y, 5.25, 1.2, 0.48) + S(k.cylinder(1.15, y, 0.18, 6.15, 0.55, P, 8), { tone: "hi", crease: "none" })).join("")
-      + [6.55, 17.45].map((y) => lampAt(42.35, y, 6.7, 1.05, 0.48)).join("");
-    const chin = [[-6.15, 1.55], [6.15, 1.55], [5.85, 2.85], [-5.85, 2.85]];
-    const bumper = panel(chin, -0.45, 1.15) + panel(chin, 42.35, 44.2) + grille + lamps
-      + S(k.slabOf(plan(42.55, 10.35, 0.28, 3.2, 0.06), 4.55, 1.05, P, 2), { tone: "mid", crease: "none" });
-    const mirrorHead = (x, y, z, outward) => S(k.slabOf(plan(x, y, 1.15, 0.72, 0.12), z, 0.42, P, 2), { tone: "hi", crease: "none" })
-      + S(G.lathe([[0, 0.1], [0.7, 0.12]], G.frameAlong([x + 0.4, y + (outward < 0 ? 0.72 : 0), z + 0.15], [0, outward, 0]), P, { steps: 8 }), { tone: "mid", crease: "none" });
-    const handle = (x, y) => {
-      const outward = y < 12 ? -1 : 1;
-      return S(G.lathe([[0, 0.11], [0.55, 0.14], [0.7, 0.06]], G.frameAlong([x, y, 8.05], [0, outward, 0]), P, { steps: 10 }), { tone: "hi", crease: "none" });
+    const cy = 12;
+    // x, rockerW, sideW, beltW, railW, zRocker, zSide, zBelt, zRail, zRoof, seam
+    const raw = [
+      [0.15, 6.3, 6.7, 6.85, 5.1, 4.7, 5.7, 6.9, 7.3, 7.55, 0],
+      [1.6, 6.6, 7.2, 7.4, 5.4, 4.65, 6.2, 7.6, 8.05, 8.3, 0],
+      [4.2, 6.9, 7.8, 8.0, 5.8, 4.6, 6.6, 8.7, 9.25, 9.6, 0],
+      [6.6, 6.8, 8.05, 8.25, 6.0, 4.6, 6.7, 9.4, 9.9, 10.2, 0],
+      [7.8, 6.6, 8.25, 8.4, 6.05, 4.6, 7.15, 9.6, 10.05, 10.35, 0],
+      [8.6, 6.45, 8.4, 8.55, 6.1, 4.6, 7.7, 9.75, 10.2, 10.45, 0],
+      [9.4, 6.3, 8.55, 8.65, 6.15, 4.6, 8.15, 9.9, 10.3, 10.55, 0],
+      [10.2, 6.45, 8.4, 8.55, 6.1, 4.6, 7.7, 9.8, 10.25, 10.6, 0],
+      [11.2, 6.65, 8.2, 8.4, 6.0, 4.6, 7.05, 9.7, 10.2, 10.7, 0],
+      [13.4, 6.9, 8.0, 8.2, 5.9, 4.65, 6.55, 10.0, 10.7, 11.35, 0],
+      [15.6, 7.0, 7.95, 8.15, 5.95, 4.65, 6.5, 10.4, 11.55, 12.6, 1],
+      [17.5, 7.05, 7.85, 8.0, 5.5, 4.65, 6.5, 10.55, 12.8, 14.4, 0],
+      [19.8, 7.1, 7.75, 7.9, 5.15, 4.65, 6.5, 10.5, 13.35, 15.2, 1],
+      [24.4, 7.15, 7.7, 7.85, 5.05, 4.65, 6.5, 10.45, 13.3, 15.5, 0],
+      [28.8, 7.15, 7.75, 7.9, 5.15, 4.65, 6.5, 10.4, 13.05, 15.25, 0],
+      [31.2, 7.05, 7.85, 8.05, 5.45, 4.6, 6.5, 10.3, 12.4, 14.2, 1],
+      [33.2, 6.95, 7.95, 8.15, 5.7, 4.55, 6.55, 10.05, 10.7, 11.15, 0],
+      [35.4, 6.7, 8.2, 8.35, 5.9, 4.55, 7.15, 9.85, 10.45, 10.7, 0],
+      [36.4, 6.5, 8.4, 8.5, 5.95, 4.55, 7.8, 9.75, 10.35, 10.55, 0],
+      [37.2, 6.35, 8.55, 8.65, 6.0, 4.55, 8.15, 9.7, 10.3, 10.5, 0],
+      [38.2, 6.5, 8.4, 8.5, 5.95, 4.5, 7.7, 9.6, 10.2, 10.4, 0],
+      [40.4, 6.75, 8.15, 8.3, 5.9, 4.5, 6.7, 9.35, 9.9, 10.15, 0],
+      [43.0, 6.6, 7.9, 8.05, 5.7, 4.45, 6.2, 8.9, 9.4, 9.6, 0],
+      [45.2, 6.4, 7.6, 7.8, 5.5, 4.45, 5.8, 8.4, 8.9, 9.15, 0],
+      [46.2, 6.2, 7.35, 7.55, 5.3, 4.5, 5.5, 7.9, 8.4, 8.7, 0],
+    ];
+    const ringOf = (row) => {
+      const [x, rW, sW, bW, tW, zR, zS, zB, zT, zRoof] = row;
+      const crown = 1.15;
+      const belly = 3.35;
+      return [
+        [x, cy - belly, zR - 0.4],
+        [x, cy - rW, zR],
+        [x, cy - sW, zS],
+        [x, cy - bW, zB],
+        [x, cy - tW, zT],
+        [x, cy - crown, zRoof],
+        [x, cy + crown, zRoof],
+        [x, cy + tW, zT],
+        [x, cy + bW, zB],
+        [x, cy + sW, zS],
+        [x, cy + rW, zR],
+        [x, cy + belly, zR - 0.4],
+      ];
     };
-    const mirrors = mirrorHead(17.4, 4.35, 9.15, -1) + mirrorHead(17.4, 18.95, 9.15, 1)
-      + [21.4, 27.2].flatMap((x) => [5.35, 18.65].map((y) => handle(x, y))).join("");
-    const seats = extrusion([[-1.05, 4.2], [1.05, 4.2], [0.85, 5.7], [-0.85, 5.7]], 21.4, 23.2, "mid", false, "none")
-      + extrusion([[-1.05, 4.2], [1.05, 4.2], [0.85, 5.7], [-0.85, 5.7]], 26.4, 28.0, "mid", false, "none");
-    const chassis = S(k.slabOf(plan(6, 6.6, 30, 1.35, 0.3), 2.3, 1.7, P, 2), { tone: "mid" })
-      + S(k.slabOf(plan(6, 16.05, 30, 1.35, 0.3), 2.3, 1.7, P, 2), { tone: "mid" })
-      + S(k.slabOf(plan(8, 6.6, 1.5, 10.8, 0.3), 2.45, 1.45, P, 2), { tone: "mid" })
-      + S(k.slabOf(plan(30, 6.6, 1.5, 10.8, 0.3), 2.45, 1.45, P, 2), { tone: "mid" })
-      + S(k.slabOf(plan(10, 8.2, 8, 7.6, 0.4), 3.6, 2.5, P, 3, 0.3), { tone: "hi" })
-      + S(k.cylinder(14, 12, 0.85, 6.05, 1.5, P, 12), { tone: "mid" })
-      + [9.4, 33.6].flatMap((wx) => [4.9, 19.1].map((wy) => S(G.lathe([[-0.18, 0.4], [-0.18, 1.6], [0.18, 1.6], [0.18, 0.4]], G.frameAlong([wx, wy, 4.5], [0, 1, 0]), P, { steps: 14 }), { tone: "lo" }))).join("");
-    const wheels = [9.4, 33.6].flatMap((x) => [4.85, 19.15].map((y) => roadWheel(x, y))).join("");
-    const fluids = S(k.cylinder(6.2, 9.2, 0.55, 8.4, 0.8, P, 10), { tone: "hi" }) + S(k.cylinder(6.8, 11.4, 0.4, 8.4, 0.7, P, 8), { tone: "mid" });
+    let rings = raw.map(ringOf);
+    const probe = G.cross3(G.sub3(rings[8][3], rings[8][2]), G.sub3(rings[9][2], rings[8][2]));
+    const flipped = probe[1] > 0;
+    if (flipped) rings = rings.map((ring) => [...ring].reverse());
+    const count = rings[0].length;
+    const ix = (index) => (flipped ? count - 1 - index : index);
+    const stations = [];
+    const dense = [];
+    for (let i = 0; i < rings.length - 1; i += 1) {
+      dense.push(rings[i]);
+      stations.push(raw[i]);
+      dense.push(rings[i].map((point, n) => point.map((value, k) => (value + rings[i + 1][n][k]) * 0.5)));
+      stations.push(raw[i].map((value, k) => (k === 10 ? 0 : (value + raw[i + 1][k]) * 0.5)));
+    }
+    dense.push(rings[rings.length - 1]);
+    stations.push(raw[raw.length - 1]);
+    rings = dense;
+    const seamAt = stations.map((row, index) => (row[10] ? index : -1)).filter((index) => index > 0);
+    const shuts = [];
+    const sideFaces = (y) => (y < cy ? G.dot3([0, -1, 0], G.viewOf(P)) > 0.05 : G.dot3([0, 1, 0], G.viewOf(P)) > 0.05);
+    for (const x of [16.4, 23.6, 31.4]) {
+      let index = 0;
+      while (index < stations.length - 2 && stations[index + 1][0] < x) index += 1;
+      const t = (x - stations[index][0]) / (stations[index + 1][0] - stations[index][0] || 1);
+      const mix = (a, b) => a.map((v, n) => v + (b[n] - v) * t);
+      const left = mix(rings[index], rings[index + 1]);
+      if (sideFaces(left[ix(2)][1])) shuts.push([left[ix(1)], left[ix(4)]]);
+      if (sideFaces(left[ix(9)][1])) shuts.push([left[ix(10)], left[ix(7)]]);
+    }
+    const shellMesh = meshSolid(rings, { sharp: 1.15, longCrease: [3, 4, 7, 8].map(ix), seams: seamAt, shuts });
+    const roof = stations.find((row) => row[0] > 24) || stations[12];
+    let shell = S(shellMesh, { tone: "hi", crease: "hi" });
+    shell += S(k.cylinder(26.4, cy, 0.1, roof[9], 0.7, P, 8), { tone: "hi", crease: "none" });
+    shell += S(k.cylinder(26.4, cy, 0.18, roof[9] + 0.7, 0.16, P, 8), { tone: "mid", crease: "none" });
+    const atX = (x) => {
+      let index = 0;
+      while (index < stations.length - 2 && stations[index + 1][0] < x) index += 1;
+      const t = Math.min(1, Math.max(0, (x - stations[index][0]) / (stations[index + 1][0] - stations[index][0] || 1)));
+      return rings[index].map((p, n) => p.map((v, k) => v + (rings[index + 1][n][k] - v) * t));
+    };
+    const glass = "";
+    const nose = rings[0];
+    const tail = rings[rings.length - 1];
+    const lamp = (x, y, z, dir, len, r) => S(G.lathe([
+      [0, r * 0.42],
+      [len * 0.7, r, 1],
+      [len, r * 0.2],
+    ], G.frameAlong([x, y, z], dir), P, { steps: 14, smooth: { rows: 3 } }), { tone: "hi", lit: accent, crease: "none" });
+    const fasciaZ = nose[ix(1)][2];
+    const fasciaTop = nose[ix(3)][2] - 0.35;
+    let grille = "";
+    for (let i = 0; i < 5; i += 1) {
+      const z = fasciaZ + 0.35 + i * ((fasciaTop - fasciaZ - 0.5) / 4);
+      grille += S(k.slabOf(plan(nose[0][0] - 0.28, cy - 1.55, 0.16, 3.1, 0.03), z, 0.08, P, 2), { tone: "hi", crease: "none" });
+    }
+    grille += S(k.slabOf(plan(nose[0][0] - 0.12, cy - 0.7, 0.12, 1.4, 0.03), fasciaZ + 0.15, 0.32, P, 2), { tone: "mid", crease: "none" });
+    const lamps = [-1, 1].map((side) => {
+      const corner = nose[ix(side < 0 ? 2 : 9)];
+      return lamp(corner[0] - 0.02, corner[1] - side * 0.15, corner[2] + 0.15, [-1, side * 0.2, 0], 0.55, 0.32);
+    }).join("") + [-1, 1].map((side) => {
+      const corner = tail[ix(side < 0 ? 3 : 8)];
+      return lamp(corner[0] + 0.05, corner[1] - side * 0.2, corner[2] - 0.7, [1, 0, 0], 0.45, 0.28);
+    }).join("");
+    const bumper = grille + lamps;
+    const mirrorHead = (x, y, z, outward) => S(k.slabOf(plan(x, y, 1.25, 0.7, 0.12), z, 0.48, P, 2), { tone: "hi", crease: "hi" })
+      + S(G.lathe([[0, 0.08], [0.85, 0.1]], G.frameAlong([x + 0.35, y + (outward < 0 ? 0.7 : 0), z + 0.18], [0, outward, 0]), P, { steps: 8 }), { tone: "mid", crease: "none" });
+    const handle = (x, y, z) => {
+      const outward = y < cy ? -1 : 1;
+      return S(G.lathe([[0, 0.1], [0.62, 0.13], [0.78, 0.05]], G.frameAlong([x, y, z], [0, outward, 0]), P, { steps: 10 }), { tone: "hi", crease: "none" });
+    };
+    const beltY = (x, side) => atX(x)[ix(side < 0 ? 3 : 8)];
+    const mirrors = [-1, 1].map((side) => {
+      const p = beltY(17.2, side);
+      return mirrorHead(16.5, p[1] - side * 0.15, p[2] + 0.15, side);
+    }).join("") + [20.6, 27.4].flatMap((x) => [-1, 1].map((side) => {
+      const p = beltY(x, side);
+      return handle(x, p[1] + side * 0.05, p[2] - 0.85);
+    })).join("");
+    const seats = extrusion([[-1.15, 6.4], [1.15, 6.4], [0.9, 8.6], [-0.9, 8.6]], 21.2, 23.4, "mid", false, "none")
+      + extrusion([[-1.15, 6.4], [1.15, 6.4], [0.9, 8.6], [-0.9, 8.6]], 26.8, 28.6, "mid", false, "none");
+    const chassis = S(k.slabOf(plan(7.2, 5.3, 28, 1.45, 0.3), 2.35, 1.7, P, 2), { tone: "mid" })
+      + S(k.slabOf(plan(7.2, 17.25, 28, 1.45, 0.3), 2.35, 1.7, P, 2), { tone: "mid" })
+      + S(k.slabOf(plan(8.6, 5.3, 1.55, 13.4, 0.3), 2.5, 1.45, P, 2), { tone: "mid" })
+      + S(k.slabOf(plan(33.4, 5.3, 1.55, 13.4, 0.3), 2.5, 1.45, P, 2), { tone: "mid" })
+      + S(k.slabOf(plan(11.5, 7.4, 9.5, 9.2, 0.4), 3.7, 2.6, P, 3, 0.3), { tone: "hi" })
+      + S(k.cylinder(16.2, cy, 0.9, 6.25, 1.45, P, 12), { tone: "mid" })
+      + [9.4, 37].flatMap((wx) => [5.05, 18.95].map((wy) => S(G.lathe([[-0.16, 0.45], [-0.16, 1.7], [0.16, 1.7], [0.16, 0.45]], G.frameAlong([wx, wy, 4.7], [0, 1, 0]), P, { steps: 16 }), { tone: "lo" }))).join("");
+    const wheels = [9.4, 37].flatMap((x) => [4.95, 19.05].map((y) => roadWheel(x, y))).join("");
+    const fluids = S(k.cylinder(12.2, 9.4, 0.42, 11.15, 0.5, P, 10), { tone: "hi" }) + S(k.cylinder(12.8, 11.6, 0.32, 11.2, 0.42, P, 8), { tone: "mid" });
     const lift = amount("drop");
     const liftMark = reactive ? " data-part=\"lift\"" : "";
     return [
@@ -748,7 +927,7 @@ const seats = svg.querySelector('[data-tool="seats"]');
 const fill = svg.querySelector('[data-tool="fill"]');
 const andons = [...svg.querySelectorAll("[data-andon]")];
 const still = matchMedia("(prefers-reduced-motion: reduce)");
-const home = iso([X0 + 22, 18, 8], P);
+const home = iso([X0 + 28, 11, 9], P);
 let shown = 12.7;
 let target = 12.7;
 let frame = 0;
@@ -795,7 +974,7 @@ function render() {
   if (readout.textContent !== text) readout.textContent = text;
   stage.setAttribute("aria-valuenow", String(station + 1));
   stage.setAttribute("aria-valuetext", info.name + "，" + info.work);
-  const focus = iso([X0 + shown * PITCH + 22, 18, 8], P);
+  const focus = iso([X0 + shown * PITCH + 28, 11, 9], P);
   world.setAttribute("transform", "translate(" + (home[0] - focus[0]).toFixed(2) + " " + (home[1] - focus[1]).toFixed(2) + ")");
   andons.forEach((node, index) => node.setAttribute("data-hot", index === station ? "" : "off"));
 }
