@@ -40,24 +40,20 @@ const STATIONS = [
 ];
 
 const LIVE_W = 1040;
-const LIVE_H = 640;
-const POSTER_W = 3600;
-const POSTER_H = 1680;
+const LIVE_H = 780;
+const POSTER_W = 1920;
+const POSTER_H = 1080;
 
 const hall = { x: -30, y: -86, w: X0 + N * PITCH + 200, d: 214, r: 10 };
 
 function projection(mode) {
-  if (mode === "poster") {
-    return k.fitProjection(
-      [...k.boxCorners(hall, -10, 52), [X0, -60, 0], [X0 + N * PITCH, 100, 54]],
-      POSTER_W,
-      POSTER_H,
-      { pad: 48, azimuth: AZ, elevation: EL },
-    );
-  }
-  const scale = 7.15;
-  const home = k.iso([X0 + 16, 10, 14], { origin: [0, 0], scale, azimuth: AZ, elevation: EL });
-  return { origin: [LIVE_W / 2 - home[0], LIVE_H * 0.64 - home[1]], scale, azimuth: AZ, elevation: EL };
+  const poster = mode === "poster";
+  const scale = poster ? 15.6 : 15.0;
+  const focus = poster ? [X0 + 12 * PITCH + 24, 18, 8] : [X0 + 24, 18, 8];
+  const w = poster ? POSTER_W : LIVE_W;
+  const h = poster ? POSTER_H : LIVE_H;
+  const home = k.iso(focus, { origin: [0, 0], scale, azimuth: AZ, elevation: EL });
+  return { origin: [w * 0.5 - home[0], h * 0.44 - home[1]], scale, azimuth: AZ, elevation: EL };
 }
 
 function scene(P, mode) {
@@ -129,7 +125,7 @@ function scene(P, mode) {
     S(k.slabOf(slab, -6.2, 6.2, P, 6, 1.2), { tone: "lo" }) + groove(slab, 0, 3.2),
   );
   const strip = plan(X0 - 4, -30, N * PITCH + 8, 3.2, 0.4);
-  const ticks = k.topTicks(strip.x + 2, strip.x + strip.w - 2, PITCH / 4, 4, strip.y, 0.45, [0.45, 0.8], P);
+  const ticks = k.topTicks(strip.x + 2, strip.x + strip.w - 2, PITCH / 4, 4, strip.y, 0.45, [0.14, 0.22], P);
   put(strip.x + strip.w / 2, strip.y, 0.4, S(k.slabOf(strip, 0, 0.45, P, 2), { tone: "lo", crease: "none" }) + L(ticks.minor, { tone: "lo" }) + L(ticks.major, { tone: "mid" }));
   const label = plan(X0 - 2, -40, 16, 7, 0.6);
   put(
@@ -374,17 +370,23 @@ function scene(P, mode) {
     }
     if (i === 11) {
       for (const [dx, dy] of [[3, 30], [52, 30], [3, -6], [52, -6]]) {
-        can(x + dx, dy, 0, 1.25, 2, "lo", 12);
-        can(x + dx, dy, 2, 0.85, 24, "mid", 12);
-        can(x + dx, dy, 26, 1.45, 1.3, "hi", 12);
+        const foot = plan(x + dx - 2.4, dy - 2.4, 4.8, 4.8, 0.45);
+        put(x + dx, dy, 0.7, S(k.slabOf(foot, 0, 1.15, P, 3, 0.22), { tone: "lo" }) + screws(foot, 1.15, 0.7));
+        can(x + dx, dy, 1.15, 1.2, 1.15, "mid", 14);
+        can(x + dx, dy, 2.3, 0.7, 22.6, "mid", 14);
+        can(x + dx, dy, 24.9, 1.4, 1.15, "hi", 14);
       }
-      put(x + 27, 30, 26.4, S(k.slabOf(plan(x + 2, 29.2, 51, 1.6, 0.3), 25.6, 1.5, P, 2), { tone: "mid" }));
-      put(x + 27, -6, 26.4, S(k.slabOf(plan(x + 2, -6.8, 51, 1.6, 0.3), 25.6, 1.5, P, 2), { tone: "mid" }));
-      put(x + 27, 12, 26.6, S(k.slabOf(plan(x + 25.8, -6, 2.4, 36, 0.3), 25.8, 1.3, P, 2), { tone: "mid" }));
-      for (const dx of [14, 38]) {
-        for (const dy of [6.5, 17.5]) can(x + dx, dy, 16, 0.22, 10, "hi", 8);
+      put(x + 27, 30, 25.6, S(k.slabOf(plan(x + 2, 29.2, 51, 1.7, 0.3), 24.9, 1.35, P, 2), { tone: "mid" }));
+      put(x + 27, -6, 25.6, S(k.slabOf(plan(x + 2, -6.8, 51, 1.7, 0.3), 24.9, 1.35, P, 2), { tone: "mid" }));
+      put(x + 27, 12, 25.8, S(k.slabOf(plan(x + 25.6, -6, 2.6, 36, 0.3), 25.1, 1.2, P, 2), { tone: "mid" }));
+      const trolley = plan(x + 16, 9.6, 18, 4.6, 0.4);
+      put(x + 25, 12, 24.6, S(k.slabOf(trolley, 23.6, 1.45, P, 3, 0.28), { tone: "hi" }) + screws(trolley, 25.05, 0.7));
+      for (const dx of [18, 32]) {
+        for (const dy of [10.4, 13.2]) can(x + dx, dy, 15.2, 0.16, 8.5, "hi", 8);
       }
-      box(x + 22, 28.6, 24.2, 10, 2.8, 1.1, "hi");
+      const stand = plan(x + 40, -16, 8, 5, 0.4);
+      put(x + 44, -13.5, 2, S(k.slabOf(stand, 0, 3.2, P, 3, 0.3), { tone: "mid" }) + screws(stand, 3.2, 0.7));
+      put(x + 44, -14.6, 5, S(k.slabOf(plan(x + 41.2, -15.2, 5.6, 0.45, 0.1), 3.4, 2.6, P, 2), { tone: "hi" }));
     }
     if (i === 12) {
       gun(x + 8, 28, 2.15);
@@ -540,13 +542,34 @@ function scene(P, mode) {
 
   const along = [1, 0, 0];
   const bodyAt = [0, 12, 2.25];
-  function extrusion(polygon, s0, s1, tone, lit = false) {
-    return S(G.prismOf(G.frameAlong(bodyAt, along), polygon, s0, s1, P), { tone, lit });
+  function extrusion(polygon, s0, s1, tone, lit = false, crease = "faint") {
+    return S(G.prismOf(G.frameAlong(bodyAt, along), polygon, s0, s1, P), { tone, lit, crease });
   }
   function roadWheel(x, y) {
+    const outward = y < 12 ? -1 : 1;
     const F = G.frameAlong([x, y, 5.35], [0, 1, 0]);
-    return S(G.lathe([[-0.85, 1.2], [-0.5, 3.15], [0.5, 3.15], [0.85, 1.2]], F, P, { steps: 28 }), { tone: "hi" })
-      + S(G.lathe([[-0.28, 1.25], [0.28, 1.25]], F, P, { steps: 16 }), { tone: "mid" });
+    const tire = [[-1.12, 1.45], [-0.82, 2.25, 1], [-0.32, 3.05, 1], [0.32, 3.05, 1], [0.82, 2.25, 1], [1.12, 1.45]];
+    const faceY = y + outward * 1.02;
+    const bolts = [];
+    let spokes = "";
+    for (let n = 0; n < 5; n += 1) {
+      const a = (n / 5) * Math.PI * 2 - 0.4;
+      bolts.push(at([x + Math.cos(a) * 1.2, faceY, 5.35 + Math.sin(a) * 1.2]));
+      const axis = [Math.cos(a), 0, Math.sin(a)];
+      spokes += S(G.prismOf(
+        G.frameAlong([x + Math.cos(a) * 0.55, faceY, 5.35 + Math.sin(a) * 0.55], axis),
+        [[-0.22, -0.1], [0.22, -0.1], [0.22, 0.1], [-0.22, 0.1]],
+        0.15,
+        1.85,
+        P,
+      ), { tone: "hi", crease: "none" });
+    }
+    const cap = G.frameAlong([x, faceY, 5.35], [0, outward, 0]);
+    return S(G.lathe(tire, F, P, { steps: 28, smooth: { rows: 3 } }), { tone: "hi", crease: "none" })
+      + S(G.lathe([[0.72, 1.85], [0.95, 2.15], [1.08, 1.85]], F, P, { steps: 22 }), { tone: "hi" })
+      + S(G.lathe([[0, 0.2], [0.28, 0.62], [0.42, 0.16]], cap, P, { steps: 12 }), { tone: "mid" })
+      + spokes
+      + D(bolts, { size: Math.max(1.2, P.scale * 0.065), tone: "hi" });
   }
 
   function carInner(amount, reactive, accent = true) {
@@ -556,23 +579,57 @@ function scene(P, mode) {
       const style = reactive ? ` style="opacity:${value < 0.5 ? 0 : 1}"` : "";
       return `<g data-piece="${name}" data-from="${from}"${style}>${svg}</g>`;
     };
-    const nose = [[-6.3, 3.5], [6.3, 3.5], [6.1, 5.2], [4.5, 6.4], [-4.5, 6.4], [-6.1, 5.2]];
-    const hood = [[-6.7, 4.05], [6.7, 4.05], [6.3, 7.15], [5.05, 8.1], [-5.05, 8.1], [-6.3, 7.15]];
-    const belt = [[-6.3, 4.2], [6.3, 4.2], [6.05, 7.55], [-6.05, 7.55]];
-    const roof = [[-5.85, 7.35], [5.85, 7.35], [5.45, 8.6], [4.35, 12.5], [-4.35, 12.5], [-5.45, 8.6]];
-    const tail = [[-6.45, 4.1], [6.45, 4.1], [6.1, 7.45], [4.95, 8.3], [-4.95, 8.3], [-6.1, 7.45]];
-    const screen = [[-5.55, 7.7], [5.55, 7.7], [4.35, 11.7], [-4.35, 11.7]];
-    const chin = [[-6.4, 2.55], [6.4, 2.55], [6.15, 4.35], [-6.15, 4.35]];
-    const shell = extrusion(nose, 1.2, 9.2, "hi") + extrusion(hood, 8.2, 16.6, "hi") + extrusion(belt, 15.8, 33.4, "hi") + extrusion(roof, 16.2, 32.6, "hi") + extrusion(tail, 32.4, 43.2, "hi");
-    const glass = extrusion(screen, 15.6, 18.4, "hi", accent) + extrusion(roof, 16.4, 32.2, "hi", accent) + extrusion([[-4.2, 8.2], [4.2, 8.2], [3.5, 11.2], [-3.5, 11.2]], 32.2, 33.6, "hi", accent);
-    const bumper = extrusion(chin, -0.4, 1.8, "mid") + extrusion(chin, 42.4, 44.4, "mid") + extrusion([[-3.5, 3.85], [3.5, 3.85], [3.3, 5.15], [-3.3, 5.15]], 0.15, 1.55, "lo");
-    const lamps = [4.2, 19.8].map((y) => S(G.lathe([[0, 0.55], [1.15, 0.72], [1.45, 0.2]], G.frameAlong([1.4, y, 6.7], along), P, { steps: 14 }), { tone: "hi" })).join("")
-      + [5.2, 18.8].map((y) => S(G.lathe([[0, 0.42], [0.9, 0.55]], G.frameAlong([43.2, y, 7.4], along), P, { steps: 12 }), { tone: "hi" })).join("");
-    const mirrors = extrusion([[-0.35, 8.4], [0.35, 8.4], [0.35, 9.3], [-0.35, 9.3]], 17.2, 19.4, "mid")
-      + S(k.slabOf(plan(18.2, 4.55, 1.6, 1.3, 0.2), 10.5, 1.5, P, 2), { tone: "mid" })
-      + S(k.slabOf(plan(18.2, 18.15, 1.6, 1.3, 0.2), 10.5, 1.5, P, 2), { tone: "mid" });
-    const seats = extrusion([[-1.3, 6.6], [1.3, 6.6], [1.05, 9.4], [-1.05, 9.4]], 22.4, 24.2, "hi")
-      + extrusion([[-1.3, 6.6], [1.3, 6.6], [1.05, 9.4], [-1.05, 9.4]], 26.6, 28.4, "hi");
+    const panel = (poly, s0, s1) => extrusion(poly, s0, s1, "hi", false, "none");
+    const nose = [[-6.0, 1.9], [-6.35, 3.15], [-5.7, 4.55], [-2.1, 5.25], [2.1, 5.25], [5.7, 4.55], [6.35, 3.15], [6.0, 1.9]];
+    const hood = [[-5.45, 2.05], [-6.55, 3.55], [-6.15, 5.35], [-1.45, 6.65], [1.45, 6.65], [6.15, 5.35], [6.55, 3.55], [5.45, 2.05]];
+    const cowl = [[-5.5, 2.15], [-6.25, 3.7], [-5.95, 6.45], [-2.35, 8.35], [2.35, 8.35], [5.95, 6.45], [6.25, 3.7], [5.5, 2.15]];
+    const cabin = [[-5.4, 2.2], [-6.05, 3.95], [-5.85, 6.85], [-2.75, 10.35], [2.75, 10.35], [5.85, 6.85], [6.05, 3.95], [5.4, 2.2]];
+    const deck = [[-5.5, 2.15], [-6.25, 3.75], [-5.95, 6.05], [-2.2, 7.15], [2.2, 7.15], [5.95, 6.05], [6.25, 3.75], [5.5, 2.15]];
+    const tail = [[-5.7, 1.95], [-6.15, 3.3], [-5.85, 5.15], [-2.55, 5.95], [2.55, 5.95], [5.85, 5.15], [6.15, 3.3], [5.7, 1.95]];
+    const shut = (side, s0) => panel([
+      [side * 5.72, 2.55], [side * 5.9, 2.6], [side * 5.84, 6.65], [side * 5.66, 6.6],
+    ], s0, s0 + 0.1);
+    const brow = (side, x0, x1) => panel([
+      [side * 6.35, 5.45], [side * 7.05, 5.6], [side * 6.95, 6.25], [side * 6.25, 6.1],
+    ], x0, x1);
+    let shell = panel(nose, 0.25, 5.1) + panel(hood, 4.7, 15.0) + panel(cowl, 14.5, 18.6) + panel(cabin, 18.1, 31.2) + panel(deck, 30.6, 37.4) + panel(tail, 36.8, 43.5);
+    shell += [-1, 1].map((side) => brow(side, 7.4, 11.4) + brow(side, 31.4, 35.6)).join("");
+    shell += panel([[-0.1, 6.42], [0.1, 6.42], [0.07, 6.68], [-0.07, 6.68]], 5.6, 14.2);
+    shell += [-1, 1].map((side) => shut(side, 18.45) + shut(side, 24.6) + shut(side, 30.7)).join("");
+    shell += S(k.slabOf(plan(33.4, 4.85, 1.15, 0.18, 0.04), 6.55, 0.85, P, 2), { tone: "hi", crease: "none" });
+    const roofZ = bodyAt[2] + 10.35;
+    shell += L(k.planOutline(plan(21.6, 10.15, 5.6, 3.5, 0.18), roofZ + 0.04, P, 3), { tone: "hi" });
+    shell += S(k.cylinder(28.2, 12.35, 0.09, roofZ, 1.15, P, 8), { tone: "hi", crease: "none" });
+    shell += S(k.cylinder(28.2, 12.35, 0.18, roofZ + 1.15, 0.14, P, 8), { tone: "mid", crease: "none" });
+    const glassSheet = (origin, axis, poly, s0, s1) => S(G.prismOf(G.frameAlong(origin, axis), poly, s0, s1, P), { tone: "hi", lit: accent, crease: "none" });
+    const sidePane = (side, s0, s1) => extrusion([
+      [side * 5.15, 7.25], [side * 4.98, 7.25], [side * 2.35, 9.75], [side * 2.5, 9.75],
+    ], s0, s1, "hi", accent, "none");
+    const glass = glassSheet([15.6, 12, bodyAt[2] + 7.05], [1, 0, 0.72], [[-1.9, -0.05], [1.9, -0.05], [1.55, 0.05], [-1.55, 0.05]], 0, 4.1)
+      + [-1, 1].map((side) => sidePane(side, 19.5, 24.15) + sidePane(side, 25.05, 30.0)).join("")
+      + glassSheet([32.0, 12, roofZ - 0.55], [1, 0, -0.42], [[-1.6, -0.05], [1.6, -0.05], [1.3, 0.05], [-1.3, 0.05]], 0, 2.8);
+    let grille = S(k.slabOf(plan(-0.05, 9.7, 0.55, 4.6, 0.1), 4.95, 1.7, P, 2), { tone: "mid", crease: "none" });
+    for (let i = 0; i < 9; i += 1) {
+      grille += S(k.slabOf(plan(0.32, 9.85 + i * 0.48, 0.38, 0.16, 0.03), 5.15, 1.35, P, 2), { tone: "hi", crease: "none" });
+    }
+    grille += S(k.slabOf(plan(0.2, 9.85, 0.28, 4.3, 0.05), 4.72, 0.28, P, 2), { tone: "hi", crease: "none" });
+    grille += S(k.slabOf(plan(0.2, 9.85, 0.28, 4.3, 0.05), 6.45, 0.22, P, 2), { tone: "hi", crease: "none" });
+    const lampAt = (x, y, z, len, r) => S(G.lathe([[0, r * 0.7], [len * 0.62, r], [len, r * 0.28]], G.frameAlong([x, y, z], along), P, { steps: 16 }), { tone: "hi", crease: "none" });
+    const lamps = [6.05, 17.95].map((y) => lampAt(0.55, y, 6.45, 1.85, 0.72) + lampAt(0.7, y, 5.25, 1.2, 0.48) + S(k.cylinder(1.15, y, 0.18, 6.15, 0.55, P, 8), { tone: "hi", crease: "none" })).join("")
+      + [6.55, 17.45].map((y) => lampAt(42.35, y, 6.7, 1.05, 0.48)).join("");
+    const chin = [[-6.15, 1.55], [6.15, 1.55], [5.85, 2.85], [-5.85, 2.85]];
+    const bumper = panel(chin, -0.45, 1.15) + panel(chin, 42.35, 44.2) + grille + lamps
+      + S(k.slabOf(plan(42.55, 10.35, 0.28, 3.2, 0.06), 4.55, 1.05, P, 2), { tone: "mid", crease: "none" });
+    const mirrorHead = (x, y, z, outward) => S(k.slabOf(plan(x, y, 1.15, 0.72, 0.12), z, 0.42, P, 2), { tone: "hi", crease: "none" })
+      + S(G.lathe([[0, 0.1], [0.7, 0.12]], G.frameAlong([x + 0.4, y + (outward < 0 ? 0.72 : 0), z + 0.15], [0, outward, 0]), P, { steps: 8 }), { tone: "mid", crease: "none" });
+    const handle = (x, y) => {
+      const outward = y < 12 ? -1 : 1;
+      return S(G.lathe([[0, 0.11], [0.55, 0.14], [0.7, 0.06]], G.frameAlong([x, y, 8.05], [0, outward, 0]), P, { steps: 10 }), { tone: "hi", crease: "none" });
+    };
+    const mirrors = mirrorHead(17.4, 4.35, 9.15, -1) + mirrorHead(17.4, 18.95, 9.15, 1)
+      + [21.4, 27.2].flatMap((x) => [5.35, 18.65].map((y) => handle(x, y))).join("");
+    const seats = extrusion([[-1.05, 4.2], [1.05, 4.2], [0.85, 5.7], [-0.85, 5.7]], 21.4, 23.2, "mid", false, "none")
+      + extrusion([[-1.05, 4.2], [1.05, 4.2], [0.85, 5.7], [-0.85, 5.7]], 26.4, 28.0, "mid", false, "none");
     const chassis = S(k.slabOf(plan(6, 6.6, 30, 1.35, 0.3), 2.3, 1.7, P, 2), { tone: "mid" })
       + S(k.slabOf(plan(6, 16.05, 30, 1.35, 0.3), 2.3, 1.7, P, 2), { tone: "mid" })
       + S(k.slabOf(plan(8, 6.6, 1.5, 10.8, 0.3), 2.45, 1.45, P, 2), { tone: "mid" })
@@ -588,11 +645,11 @@ function scene(P, mode) {
       show("chassis", 10, chassis),
       show("wheels", 12, wheels),
       `<g${liftMark} transform="${k.translateAlong(P, [0, 0, lift])}">`,
+      show("seats", 7, seats),
       show("shell", -1, shell),
       show("glass", 4, glass),
-      show("seats", 7, seats),
       show("doors", 8, mirrors),
-      show("bumper", 12, bumper + lamps),
+      show("bumper", 12, bumper),
       show("fluids", 13, fluids),
       `</g>`,
     ].join("");
@@ -614,8 +671,8 @@ function scene(P, mode) {
     const car = `<g data-part="car" transform="${k.translateAlong(P, [X0 + 5, 0, 0])}">${carInner(initial, true)}</g>`;
     put(X0 + 18, 11, 8, car);
   } else {
-    const station = 11;
-    const u = 0.28;
+    const station = 12;
+    const u = 0.7;
     const car = `<g data-part="poster-car" transform="${k.translateAlong(P, [X0 + station * PITCH + 5, 0, 0])}">${carInner(amountOf(station, u), false)}</g>`;
     put(X0 + station * PITCH + 18, 11, 10, car);
   }
@@ -691,12 +748,12 @@ const seats = svg.querySelector('[data-tool="seats"]');
 const fill = svg.querySelector('[data-tool="fill"]');
 const andons = [...svg.querySelectorAll("[data-andon]")];
 const still = matchMedia("(prefers-reduced-motion: reduce)");
-const home = iso([X0 + 16, 10, 14], P);
-let shown = 0;
-let target = 0;
+const home = iso([X0 + 22, 18, 8], P);
+let shown = 12.7;
+let target = 12.7;
 let frame = 0;
 let last = 0;
-let clock = 0;
+let clock = 12.7 * 2.7;
 let touring = !still.matches;
 let visible = false;
 let idle = 0;
@@ -738,7 +795,7 @@ function render() {
   if (readout.textContent !== text) readout.textContent = text;
   stage.setAttribute("aria-valuenow", String(station + 1));
   stage.setAttribute("aria-valuetext", info.name + "，" + info.work);
-  const focus = iso([X0 + shown * PITCH + 16, 10, 14], P);
+  const focus = iso([X0 + shown * PITCH + 22, 18, 8], P);
   world.setAttribute("transform", "translate(" + (home[0] - focus[0]).toFixed(2) + " " + (home[1] - focus[1]).toFixed(2) + ")");
   andons.forEach((node, index) => node.setAttribute("data-hot", index === station ? "" : "off"));
 }
@@ -766,10 +823,19 @@ const steer = (next) => {
   run();
 };
 new IntersectionObserver((entries) => { visible = entries[entries.length - 1].isIntersecting; if (visible) run(); }, { rootMargin: "120px 0px" }).observe(stage);
-stage.addEventListener("pointermove", (event) => {
+stage.style.touchAction = "none";
+const scrub = (event) => {
   const box = svg.getBoundingClientRect();
   const share = clamp((event.clientX - box.left) / box.width, 0, 0.999);
   steer(share * 20);
+};
+stage.addEventListener("pointerdown", (event) => {
+  if (stage.setPointerCapture) stage.setPointerCapture(event.pointerId);
+  scrub(event);
+});
+stage.addEventListener("pointermove", (event) => {
+  if (event.pointerType !== "mouse" && event.buttons === 0) return;
+  scrub(event);
 });
 stage.addEventListener("keydown", (event) => {
   const here = Math.floor(target + 1e-3);
@@ -788,7 +854,7 @@ render();
 const plate = k.plateHtml({
   fig: "Fig 1",
   title: "总装车间",
-  hint: "悬停或方向键，沿节拍走完全线",
+  hint: "手指左右拖，沿节拍走完全线",
   readout: "上线 · 节拍 60 s · 站内 0 s",
   keys: [
     { mark: "lit", label: "正在装配的这台车：车顶是要跟着走的那一件" },
